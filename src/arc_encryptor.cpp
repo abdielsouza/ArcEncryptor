@@ -19,7 +19,7 @@ void arc_encrypt_content(ArcEncryptor& encryptor, std::string& message, double r
     for (auto chr : message)
     {
         auto theta = static_cast<double>((int) chr / 256 * 2 * M_PI);
-        auto theta_prime = std::modulus<double>()((theta + key), (2 * M_PI));
+        auto theta_prime = std::fmod((theta + key), (2 * M_PI));
 
         auto x = radius * std::cos(theta_prime);
         auto y = radius * std::sin(theta_prime);
@@ -33,7 +33,7 @@ void arc_decrypt_content(ArcEncryptor& encryptor)
     for (auto [x, y] : std::get<ArcEncryptedText>(encryptor.encrypted_content))
     {
         auto theta_prime = std::atan2(y, x);
-        auto theta = std::modulus<double>()((theta_prime - encryptor.decrypt_key), (2 * M_PI));
+        auto theta = std::fmod((theta_prime - encryptor.decrypt_key), (2 * M_PI));
 
         auto chr = static_cast<char>(
             static_cast<int>(theta / (2 * M_PI) * 256)
@@ -47,7 +47,7 @@ void arc_encrypt_file(
     ArcEncryptor& encryptor, 
     const std::string& inputFilePath, 
     const std::string& outputFilePath, 
-    double radius = 1.0
+    double radius
 )
 {
     std::ifstream inputFile(inputFilePath, std::ios::binary);
