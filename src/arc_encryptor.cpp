@@ -47,7 +47,7 @@ void arc_encrypt_file(
     ArcEncryptor& encryptor, 
     const std::string& inputFilePath, 
     const std::string& outputFilePath, 
-    double radius
+    double radius = 1.0
 )
 {
     std::ifstream inputFile(inputFilePath, std::ios::binary);
