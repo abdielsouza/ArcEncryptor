@@ -1,90 +1,112 @@
 #include "arc_encryptor.hpp"
 #include "arc_utils.hpp"
 
-#define _USE_MATH_DEFINES
-
+#include <cstdint>
 #include <cmath>
-#include <stdio.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <functional>
+#include <fstream>
+#include <stdexcept>
+#include <iostream>
 
-void arc_encrypt_content(ArcEncryptor& encryptor, std::string& message, double radius)
+
+/*
+ * Cryptography functions applied for raw strings
+ */
+
+ArcResult arc_encrypt_content(ArcDataHolder& holder, const std::string& text, const std::string& key)
 {
-    auto key = arc_generate_random_key();
-    encryptor.decrypt_key = key;
+    const std::string seed = ArcUtils::generate_sha256(key);
+    const double k = std::stod("0." + seed.substr(0, 16));
+    const double offset = std::stod("0." + seed.substr(16, 16));
 
-    encryptor.arc_radius = radius;
-
-    for (auto chr : message)
+    for (size_t i = 0; i < text.size(); i++)
     {
-        auto theta = static_cast<double>((int) chr / 256 * 2 * M_PI);
-        auto theta_prime = std::fmod((theta + key), (2 * M_PI));
+        double x = static_cast<double>(i) / 10;
+        double y = std::sin(k * x + offset) + text[i];
 
-        auto x = radius * std::cos(theta_prime);
-        auto y = radius * std::sin(theta_prime);
-
-        std::get<ArcEncryptedText>(encryptor.encrypted_content).push_back(std::make_tuple(x, y));
+        holder.encryptedContent.emplace_back(x, y);
     }
+
+    return {true, "success"};
 }
 
-void arc_decrypt_content(ArcEncryptor& encryptor)
+ArcResult arc_decrypt_content(ArcDataHolder& holder, const std::string& key)
 {
-    for (auto [x, y] : std::get<ArcEncryptedText>(encryptor.encrypted_content))
+    const std::string seed = ArcUtils::generate_sha256(key);
+    const double k = std::stod("0." + seed.substr(0, 16));
+    const double offset = std::stod("0." + seed.substr(16, 16));
+
+    for (const auto& coord : holder.encryptedContent)
     {
-        auto theta_prime = std::atan2(y, x);
-        auto theta = std::fmod((theta_prime - encryptor.decrypt_key), (2 * M_PI));
+        double x = coord.first;
+        double y = coord.second;
+        char originalChar = static_cast<char>((int) (y - std::sin(k * x + offset)));
 
-        auto chr = static_cast<char>(
-            static_cast<int>(theta / (2 * M_PI) * 256)
-        );
+        if ((int) originalChar == 31) originalChar = ' ';
 
-        encryptor.decrypted_content.push_back(chr);
+        holder.decryptedContent += originalChar;
     }
+
+    return {true, "success"};
 }
 
-void arc_encrypt_file(
-    ArcEncryptor& encryptor, 
-    const std::string& inputFilePath, 
-    const std::string& outputFilePath, 
-    double radius
-)
+/*
+ * Cryptography functions applied for files
+ */
+
+ArcResult arc_encrypt_file(ArcDataHolder& holder, const fs::path& filename, const std::string& key)
 {
-    std::ifstream inputFile(inputFilePath, std::ios::binary);
-    std::ofstream outputFile(outputFilePath + ".arc", std::ios::binary);
-
-    auto key = arc_generate_random_key();
-    encryptor.decrypt_key = key;
-
-    unsigned char byte;
-
-    while (inputFile.read(reinterpret_cast<char*>(&byte), sizeof(byte)))
+    if (std::fstream file(fs::absolute(filename).string(), std::ios::in | std::ios::out | std::ios::binary | std::ios::ate); !file)
     {
-        auto [x, y] = arc_encrypt_byte(byte, encryptor.decrypt_key, radius);
-        outputFile.write(reinterpret_cast<char*>(&x), sizeof(x));
-        outputFile.write(reinterpret_cast<char*>(&y), sizeof(y));
+        return {false, "failed to open file!"};
+    }
+    else
+    {
+        if (file.tellg() == 0)
+        {
+            return {false, "file is empty"};
+        }
+
+        file.seekg(0, std::ios::beg);
+
+        std::ostringstream oss;
+        oss << file.rdbuf();
+
+        std::string data = oss.str();
+
+        arc_encrypt_content(holder, data, key);
+
+        file.close();
+
+        file.open(fs::absolute(filename).string(), std::ios::in | std::ios::out | std::ios::binary | std::ios::trunc);
+
+        file.seekp(0, std::ios::beg);
+
+        for (const auto& coord : holder.encryptedContent)
+        {
+            file.write(reinterpret_cast<const char*>(&coord.first), sizeof(coord.first));
+            file.write(reinterpret_cast<const char*>(&coord.second), sizeof(coord.second));
+        }
+
+        file.close();
     }
 
-    inputFile.close();
-    outputFile.close();
+    return {true, "success"};
 }
 
-void arc_decrypt_file(ArcEncryptor& encryptor, const std::string& inputFilePath, const std::string& outputFilePath)
+ArcResult arc_decrypt_file(ArcDataHolder& holder, const fs::path& filename, const std::string& key)
 {
-    std::ifstream inputFile(inputFilePath + ".arc", std::ios::binary);
-    std::ofstream outputFile(outputFilePath, std::ios::binary);
-
-    double x, y;
-
-    while (
-        inputFile.read(reinterpret_cast<char*>(&x), sizeof(x)) &&
-        inputFile.read(reinterpret_cast<char*>(&y), sizeof(y))
-    )
+    if (std::fstream file(fs::absolute(filename).string(), std::ios::in | std::ios::out | std::ios::binary | std::ios::trunc); !file)
     {
-        unsigned char byte = arc_decrypt_byte(x, y, encryptor.decrypt_key, encryptor.arc_radius);
-        outputFile.write(reinterpret_cast<char*>(&byte), sizeof(byte));
+        return {false, "failed to open file"};
+    }
+    else
+    {
+        arc_decrypt_content(holder, key);
+
+        file.seekp(0, std::ios::beg);
+        file.write(holder.decryptedContent.c_str(), holder.decryptedContent.size());
+        file.close();
     }
 
-    inputFile.close();
-    outputFile.close();
+    return {true, "success"};
 }

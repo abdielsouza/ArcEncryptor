@@ -18,6 +18,9 @@ target_include_directories(arc-encryptor-lib PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
+target_link_libraries(arc-encryptor-lib PRIVATE ssl)
+target_link_libraries(arc-encryptor-lib PRIVATE crypto)
+
 # Define padrões de compilação
 set_target_properties(arc-encryptor-lib PROPERTIES
     CXX_STANDARD 17
@@ -60,3 +63,5 @@ export(EXPORT ArcEncryptorTargets
     FILE "${CMAKE_CURRENT_BINARY_DIR}/ArcEncryptorConfig.cmake"
     NAMESPACE ArcEncryptor::
 )
+
+add_subdirectory(test)

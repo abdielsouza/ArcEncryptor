@@ -3,29 +3,37 @@
 
 #pragma once
 
-#include <cstdint>
-#include <string>
+#define ARC_RADIUS_FACTOR 10
+
 #include <vector>
+#include <utility>
+#include <string>
+#include <filesystem>
 #include <tuple>
-#include <variant>
-#include <fstream>
 
-// cryptography formula: ß = (x^a) * 3
+namespace fs = std::filesystem;
 
-using ArcEncryptedText = std::vector<std::tuple<double, double>>;
+using ArcEncryptedData = typename std::vector<std::pair<double, double>>;
+using ArcResult = typename std::tuple<bool, std::string>;
 
-struct ArcEncryptor
+struct ArcDataHolder
 {
-    std::string decrypted_content;
-    std::variant<ArcEncryptedText, std::string> encrypted_content;
-    double decrypt_key;
-    uint16_t arc_radius;
+    ArcEncryptedData encryptedContent;
+    std::string decryptedContent;
 };
 
-void arc_encrypt_content(ArcEncryptor& encryptor, std::string& message, double radius = 1.0);
-void arc_decrypt_content(ArcEncryptor& encryptor);
+/*
+ * Cryptography functions applied for raw strings
+ */
 
-void arc_encrypt_file(ArcEncryptor& encryptor, const std::string& inputFilePath, const std::string& outputFilePath, double radius = 1.0);
-void arc_decrypt_file(ArcEncryptor& encryptor, const std::string& inputFilePath, const std::string& outputFilePath);
+ArcResult arc_encrypt_content(ArcDataHolder& holder, const std::string& text, const std::string& key);
+ArcResult arc_decrypt_content(ArcDataHolder& holder, const std::string& key);
+
+/*
+ * Cryptography functions applied for files
+ */
+
+ArcResult arc_encrypt_file(ArcDataHolder& holder, const fs::path& filename, const std::string& key);
+ArcResult arc_decrypt_file(ArcDataHolder& holder, const fs::path& filename, const std::string& key);
 
 #endif
